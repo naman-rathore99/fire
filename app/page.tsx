@@ -1,65 +1,111 @@
-import Image from "next/image";
+"use client"
+import { useState, useEffect } from 'react';
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, onValue, push, set, onDisconnect, off } from 'firebase/database';
 
-export default function Home() {
+// Your Firebase config (replace with your actual config from Step 1)
+const firebaseConfig = {
+  apiKey: "AIzaSyCelUVeDVb3ni-HTtj1Db8ahYFf0fHuU60",
+  authDomain: "chat-ab57c.firebaseapp.com",
+  databaseURL: "https://chat-ab57c-default-rtdb.firebaseio.com",
+  projectId: "chat-ab57c",
+  storageBucket: "chat-ab57c.firebasestorage.app",
+  messagingSenderId: "37087074189",
+  appId: "1:37087074189:web:3f665419bacacce4980fc4"
+};
+
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
+
+interface Message {
+  id: string;
+  text: string;
+  timestamp: string;
+}
+
+export default function Chat() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [status, setStatus] = useState('Connecting...');
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const room = 'chatroom'; // Shared room for 1-to-1
+
+  useEffect(() => {
+    const usersRef = ref(database, `${room}/users`);
+    const messagesRef = ref(database, `${room}/messages`);
+
+    // Generate a unique user ID
+    const newUserId = `user-${Date.now()}`;
+    setUserId(newUserId);
+
+    // Track users in the room (for 1-to-1 enforcement)
+    const userRef = ref(database, `${room}/users/${newUserId}`);
+    set(userRef, true); // Mark user as online
+    onDisconnect(userRef).remove(); // Remove on disconnect
+
+    // Listen for user count
+    onValue(usersRef, (snapshot) => {
+      const users = snapshot.val();
+      const userCount = users ? Object.keys(users).length : 0;
+      if (userCount > 2) {
+        setStatus('Room full (only 2 users allowed).');
+        return;
+      }
+      setStatus(`Joined chat room. Users online: ${userCount}`);
+    });
+
+    // Listen for messages
+    onValue(messagesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const msgList: Message[] = Object.values(data);
+        setMessages(msgList);
+      }
+    });
+
+    return () => {
+      off(messagesRef);
+      off(usersRef);
+    };
+  }, []);
+
+  const sendMessage = () => {
+    if (input.trim() && userId) {
+      const messagesRef = ref(database, `${room}/messages`);
+      push(messagesRef, {
+        id: Date.now().toString(),
+        text: `User ${userId.slice(-4)}: ${input}`, // Simple user identifier
+        timestamp: new Date().toLocaleTimeString()
+      });
+      setInput('');
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex flex-col h-screen bg-gray-100 p-4">
+      <h1 className="text-2xl font-bold mb-4">1-to-1 Chat App (Firebase)</h1>
+      <div className="text-sm text-gray-600 mb-2">{status}</div>
+      <div className="flex-1 overflow-y-auto bg-white p-4 rounded shadow">
+        {messages.map((msg) => (
+          <div key={msg.id} className="mb-2">
+            <span className="text-xs text-gray-500">{msg.timestamp}</span> {msg.text}
+          </div>
+        ))}
+      </div>
+      <div className="flex mt-4">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          className="flex-1 p-2 border rounded"
+          placeholder="Type a message..."
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        <button onClick={sendMessage} className="ml-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+          Send
+        </button>
+      </div>
     </div>
   );
 }
